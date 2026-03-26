@@ -30,7 +30,7 @@ u64 parse_args(int argc, char **argv) {
   return value;
 }
 
-void print_exec_time(timeval *start, timeval *stop) {
+void print_exec_time(timeval *start, timeval *stop, int rank) {
   long s = stop->tv_sec - start->tv_sec;
   long us = stop->tv_usec - start->tv_usec;
   if (us < 0) {
@@ -40,7 +40,8 @@ void print_exec_time(timeval *start, timeval *stop) {
   long ms = us / 1000;
   long us_remainder = us % 1000;
 
-  printf("Execution time: %lds %ldms %ldus\n", s, ms, us_remainder);
+  printf("[rank%d]: Execution time: %lds %ldms %ldus\n", rank, s, ms,
+         us_remainder);
 
   return;
 }
@@ -189,11 +190,12 @@ int main(int argc, char **argv) {
     }
 
     gettimeofday(&t_stop, NULL);
-    print_exec_time(&t_start, &t_stop);
+    print_exec_time(&t_start, &t_stop, rank);
     printf("There are %d twin primes in [0, %lu)\n", final_count, upper_limit);
   }
 
   if (!is_master(rank)) {
+    gettimeofday(&t_start, NULL);
     chunk_t chunks[worker_count];
     chunk_t next_chunks[worker_count];
 
@@ -225,6 +227,9 @@ int main(int argc, char **argv) {
     // Wait for last send
     if (send_in_flight)
       MPI_Wait(&send_result, MPI_STATUS_IGNORE);
+
+    gettimeofday(&t_stop, NULL);
+    print_exec_time(&t_start, &t_stop, rank);
   }
 
   MPI_Finalize();

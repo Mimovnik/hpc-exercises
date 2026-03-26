@@ -30,7 +30,7 @@ u64 parse_args(int argc, char **argv) {
   return value;
 }
 
-void print_exec_time(timeval *start, timeval *stop) {
+void print_exec_time(timeval *start, timeval *stop, int rank) {
   long s = stop->tv_sec - start->tv_sec;
   long us = stop->tv_usec - start->tv_usec;
   if (us < 0) {
@@ -40,7 +40,8 @@ void print_exec_time(timeval *start, timeval *stop) {
   long ms = us / 1000;
   long us_remainder = us % 1000;
 
-  printf("Execution time: %lds %ldms %ldus\n", s, ms, us_remainder);
+  printf("[rank%d]: Execution time: %lds %ldms %ldus\n", rank, s, ms,
+         us_remainder);
 
   return;
 }
@@ -122,7 +123,10 @@ int main(int argc, char **argv) {
   guard_proc_count(proc_count, upper_limit, rank);
 
   if (!is_master(rank)) {
+    gettimeofday(&t_start, NULL);
     partial_count = do_work(rank, proc_count, upper_limit);
+    gettimeofday(&t_stop, NULL);
+    print_exec_time(&t_start, &t_stop, rank);
   }
 
   MPI_Reduce(&partial_count, &final_count, 1, MPI_INT, MPI_SUM, 0,
@@ -130,7 +134,7 @@ int main(int argc, char **argv) {
 
   if (is_master(rank)) {
     gettimeofday(&t_stop, NULL);
-    print_exec_time(&t_start, &t_stop);
+    print_exec_time(&t_start, &t_stop, rank);
     printf("There are %d twin primes in [0, %lu)\n", final_count, upper_limit);
   }
 

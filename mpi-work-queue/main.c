@@ -11,25 +11,49 @@ typedef struct timeval timeval;
 
 static inline u64 min(u64 a, u64 b) { return a < b ? a : b; }
 
-u64 parse_args(int argc, char **argv) {
-  if (argc != 2) {
-    fprintf(stderr, "[Error] Wrong number of arguments\n");
-    fprintf(stderr, "Usage: %s <upper-limit>\n", argv[0]);
-    exit(EXIT_FAILURE);
-  }
+typedef struct {
+  u64 upper_limit;
+  int avg_tasks_per_proc;
+} args;
 
+u64 parse_u64(char *str) {
   char *end;
   errno = 0;
-  u64 value = strtoull(argv[1], &end, 10);
+  u64 value = strtoull(str, &end, 10);
 
-  if (errno != 0 || end == argv[1] || *end != '\0') {
-    fprintf(stderr, "[Error] Cannot parse the <upper-limit>\n");
+  if (errno != 0 || end == str || *end != '\0') {
+    fprintf(stderr, "[Error] Cannot parse %s to u64\n", str);
     exit(EXIT_FAILURE);
   }
 
   return value;
 }
 
+int parse_int(char *str) {
+  char *end;
+  errno = 0;
+  u64 value = strtod(str, &end);
+
+  if (errno != 0 || end == str || *end != '\0') {
+    fprintf(stderr, "[Error] Cannot parse %s to int\n", str);
+    exit(EXIT_FAILURE);
+  }
+
+  return value;
+}
+
+args parse_args(int argc, char **argv) {
+  if (argc != 3) {
+    fprintf(stderr, "[Error] Wrong number of arguments\n");
+    fprintf(stderr, "Usage: %s <upper-limit> <avg_tasks_per_proc>\n", argv[0]);
+    exit(EXIT_FAILURE);
+  }
+
+  return (args){
+      .upper_limit = parse_u64(argv[1]),
+      .avg_tasks_per_proc = parse_int(argv[2]),
+  };
+}
 void print_exec_time(timeval *start, timeval *stop, int rank) {
   long s = stop->tv_sec - start->tv_sec;
   long us = stop->tv_usec - start->tv_usec;
@@ -103,7 +127,6 @@ typedef struct {
 #define TAG_TERMINATE 3
 
 int main(int argc, char **argv) {
-  u64 upper_limit = parse_args(argc, argv);
   int final_count = 0;
   timeval t_start, t_stop;
   int rank, proc_count;
@@ -114,12 +137,16 @@ int main(int argc, char **argv) {
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &proc_count);
 
-  guard_proc_count(proc_count, upper_limit, rank);
-
   if (is_master(rank)) {
+    args args = parse_args(argc, argv);
+    u64 upper_limit = args.upper_limit;
+    guard_proc_count(proc_count, upper_limit, rank);
+    int avg_tasks_per_proc = args.avg_tasks_per_proc;
+
     gettimeofday(&t_start, NULL);
 
-    u64 chunk_size = upper_limit / (proc_count * 4); // heuristic
+    u64 chunk_size =
+        upper_limit / (proc_count * avg_tasks_per_proc); // heuristic
     u64 next_start = 0;
 
     for (int worker_i = 1; worker_i < proc_count; worker_i++) {
